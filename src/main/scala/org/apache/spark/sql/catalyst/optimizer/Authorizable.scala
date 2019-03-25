@@ -47,10 +47,14 @@ trait Authorizable extends Rule[LogicalPlan] with Logging {
    * @return a plan itself which has gone through the privilege check.
    */
   override def apply(plan: LogicalPlan): LogicalPlan = {
+    info("Do query with Ranger............")
     val operationType: HiveOperationType = getOperationType(plan)
+    info(s"operationType: ${operationType}")
     val authzContext = new HiveAuthzContext.Builder().build()
     val (in, out) = PrivilegesBuilder.build(plan)
-    spark.sharedState.externalCatalog match {
+    info(s"In : ${in}")
+    info(s"Out : ${out}")
+    spark.sharedState.externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog] match {
       case _: HiveExternalCatalog =>
         AuthzImpl.checkPrivileges(spark, operationType, in, out, authzContext)
       case _ =>

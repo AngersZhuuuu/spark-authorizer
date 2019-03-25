@@ -29,63 +29,41 @@ import org.apache.spark.sql.hive.{AuthzUtils, HiveExternalCatalog}
 import org.apache.spark.sql.internal.NonClosableMutableURLClassLoader
 
 /**
- * A Tool for Authorizer implementation.
- *
- * The [[SessionState]] generates the authorizer and authenticator, we use these to check
- * the privileges of a Spark LogicalPlan, which is mapped to hive privilege objects and operation
- * type.
- *
- * [[SparkSession]] with hive catalog implemented has its own instance of [[SessionState]]. I am
- * strongly willing to reuse it, but for the reason that it belongs to an isolated classloader
- * which makes it unreachable for us to visit it in Spark's context classloader. So, when
- * [[ClassCastException]] occurs, we turn off [[IsolatedClientLoader]] to use Spark's builtin
- * Hive client jars to generate a new metastore client to replace the original one, once it is
- * generated, will be reused then.
- *
- */
+  * A Tool for Authorizer implementation.
+  *
+  * The [[SessionState]] generates the authorizer and authenticator, we use these to check
+  * the privileges of a Spark LogicalPlan, which is mapped to hive privilege objects and operation
+  * type.
+  *
+  * [[SparkSession]] with hive catalog implemented has its own instance of [[SessionState]]. I am
+  * strongly willing to reuse it, but for the reason that it belongs to an isolated classloader
+  * which makes it unreachable for us to visit it in Spark's context classloader. So, when
+  * [[ClassCastException]] occurs, we turn off [[IsolatedClientLoader]] to use Spark's builtin
+  * Hive client jars to generate a new metastore client to replace the original one, once it is
+  * generated, will be reused then.
+  *
+  */
 object AuthzImpl extends Logging {
-  def checkPrivileges(
-      spark: SparkSession,
-      hiveOpType: HiveOperationType,
-      inputObjs: JList[HivePrivilegeObject],
-      outputObjs: JList[HivePrivilegeObject],
-      context: HiveAuthzContext): Unit = {
-    val client = spark.sharedState
-      .externalCatalog.asInstanceOf[HiveExternalCatalog]
+  def checkPrivileges(sparkSession: SparkSession,
+                      hiveOpType: HiveOperationType,
+                      inputObjs: JList[HivePrivilegeObject],
+                      outputObjs: JList[HivePrivilegeObject],
+                      context: HiveAuthzContext): Unit = {
+    val metaHive = sparkSession.sharedState
+      .externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog]
       .client
-    val clientImpl = try {
-      client.asInstanceOf[HiveClientImpl]
-    } catch {
-      case _: ClassCastException =>
-        val clientLoader =
-          AuthzUtils.getFieldVal(client, "clientLoader").asInstanceOf[IsolatedClientLoader]
-        AuthzUtils.setFieldVal(clientLoader, "isolationOn", false)
-        AuthzUtils.setFieldVal(clientLoader,
-          "classLoader", new NonClosableMutableURLClassLoader(clientLoader.baseClassLoader))
-        clientLoader.cachedHive = null
-        val newClient = clientLoader.createClient()
-        AuthzUtils.setFieldVal(
-          spark.sharedState.externalCatalog.asInstanceOf[HiveExternalCatalog],
-          "client",
-          newClient)
-        newClient.asInstanceOf[HiveClientImpl]
+    var sessionState: SessionState = null
+    metaHive.withHiveState {
+      sessionState = SessionState.get()
     }
+    if (sessionState.getUserName == null)
+      AuthzUtils.setFieldVal(sessionState, "userName", UserGroupInformation.getCurrentUser.getShortUserName)
 
-    val state = clientImpl.state
-    SessionState.setCurrentSessionState(state)
-    val user = UserGroupInformation.getCurrentUser.getShortUserName
-    if (state.getAuthenticator.getUserName != user) {
-      val hiveConf = state.getConf
-      val newState = new SessionState(hiveConf, user)
-      SessionState.start(newState)
-      AuthzUtils.setFieldVal(clientImpl, "state", newState)
-    }
-
-    val authz = clientImpl.state.getAuthorizerV2
-    clientImpl.withHiveState {
-      if (authz != null) {
+    val authorizer = sessionState.getAuthorizerV2
+    metaHive.withHiveState {
+      if (authorizer != null) {
         try {
-          authz.checkPrivileges(hiveOpType, inputObjs, outputObjs, context)
+          authorizer.checkPrivileges(hiveOpType, inputObjs, outputObjs, context)
         } catch {
           case hae: HiveAccessControlException =>
             error(
