@@ -57,8 +57,8 @@ object AuthzImpl extends Logging {
     info(s"Get metaHive.state ${metaHive.getState}")
 
     metaHive.withHiveState {
-//      sessionState = SessionState.get()
-      sessionState = metaHive.getState.asInstanceOf[SessionState]
+      info(s"Thread => ${Thread.currentThread().getId}")
+      sessionState = SessionState.get()
     }
     info(s"Get SessionState....${sessionState}")
     if (sessionState.getUserName == null) {
