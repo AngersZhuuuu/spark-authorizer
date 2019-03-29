@@ -27,6 +27,7 @@ import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.hive.{AuthzUtils, HiveExternalCatalog}
 import org.apache.spark.sql.internal.NonClosableMutableURLClassLoader
+import scala.collection.JavaConverters._
 
 /**
   * A Tool for Authorizer implementation.
@@ -59,8 +60,15 @@ object AuthzImpl extends Logging {
     info(s"Get MetaDataHive${metaHive}")
     info(s"Get metaHive.state ${metaHive.getState}")
     val user = UserGroupInformation.getCurrentUser.getShortUserName
-    if (userToSession.containsKey(user))
+    info(s"Current User ${user}")
+    info(s"is empyrt? ${userToSession.isEmpty}")
+    if (!userToSession.isEmpty)
+      userToSession.asScala.foreach(kv => {
+        info(s"user => ${kv._1} , sessionstate => ${kv._2}")
+      })
+    if (userToSession.containsKey(user)) {
       sessionState = userToSession.get(user)
+    }
     else {
       metaHive.withHiveState {
         info(s"Thread => ${Thread.currentThread().getId}")
