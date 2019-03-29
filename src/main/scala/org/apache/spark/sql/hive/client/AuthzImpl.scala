@@ -59,22 +59,21 @@ object AuthzImpl extends Logging {
     var sessionState: SessionState = null
     info(s"Get MetaDataHive${metaHive}")
     info(s"Get metaHive.state ${metaHive.getState}")
-    val user = UserGroupInformation.getCurrentUser.getShortUserName
-    info(s"Current User ${user}")
-    info(s"is empyrt? ${userToSession.isEmpty}")
-    if (!userToSession.isEmpty)
-      userToSession.asScala.foreach(kv => {
-        info(s"user => ${kv._1} , sessionstate => ${kv._2}")
-      })
-    if (userToSession.containsKey(user)) {
-      sessionState = userToSession.get(user)
-    }
-    else {
-      metaHive.withHiveState {
-        info(s"Thread => ${Thread.currentThread().getId}")
+
+    metaHive.withHiveState {
+      info(s"Thread => ${Thread.currentThread().getId}")
+      val user = UserGroupInformation.getCurrentUser.getShortUserName
+      info(s"Current User ${user}")
+      info(s"is empyrt? ${userToSession.isEmpty}")
+      if (!userToSession.isEmpty)
+        userToSession.asScala.foreach(kv => {
+          info(s"user => ${kv._1} , sessionstate => ${kv._2}")
+        })
+      if (!userToSession.containsKey(user)) {
         sessionState = SessionState.get()
+        userToSession.put(user, sessionState)
       }
-      userToSession.put(user, sessionState)
+      sessionState = userToSession.get(user)
     }
 
     info(s"Get SessionState....${sessionState}")
