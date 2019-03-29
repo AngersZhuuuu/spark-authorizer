@@ -53,37 +53,42 @@ object AuthzImpl extends Logging {
                       inputObjs: JList[HivePrivilegeObject],
                       outputObjs: JList[HivePrivilegeObject],
                       context: HiveAuthzContext): Unit = {
-    val metaHive = sparkSession.sharedState
+    val client = sparkSession.sharedState
       .externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog]
       .client
-    var sessionState: SessionState = null
-    info(s"Get MetaDataHive ${metaHive}")
-    info(s"Get metaHive.state ${metaHive.getState}")
-    info(s"Get Current User.state ${UserGroupInformation.getCurrentUser.getShortUserName}")
-    metaHive.withHiveState {
-      info(s"Current Thread ${Thread.currentThread().getId}")
-      sessionState = SessionState.get()
+    val clientImpl = try {
+      client.asInstanceOf[HiveClientImpl]
+    } catch {
+      case _: ClassCastException =>
+        val clientLoader =
+          AuthzUtils.getFieldVal(client, "clientLoader").asInstanceOf[IsolatedClientLoader]
+        AuthzUtils.setFieldVal(clientLoader, "isolationOn", false)
+        AuthzUtils.setFieldVal(clientLoader,
+          "classLoader", new NonClosableMutableURLClassLoader(clientLoader.baseClassLoader))
+        clientLoader.cachedHive = null
+        val newClient = clientLoader.createClient()
+        AuthzUtils.setFieldVal(
+          sparkSession.sharedState.externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog],
+          "client",
+          newClient)
+        newClient.asInstanceOf[HiveClientImpl]
     }
 
-    info(s"Get SessionState....${sessionState}")
-    val currentUser = UserGroupInformation.getCurrentUser.getShortUserName
-    info(s"Set User ${currentUser}")
-    if (!userToSession.contains(currentUser) && sessionState != null) {
-      userToSession.put(currentUser, sessionState)
-      sessionState = userToSession.get(currentUser)
-    } else {
-      sessionState = userToSession.get(currentUser)
+    val state = clientImpl.state
+    SessionState.setCurrentSessionState(state)
+    val user = UserGroupInformation.getCurrentUser.getShortUserName
+    if (state.getAuthenticator.getUserName != user) {
+      val hiveConf = state.getConf
+      val newState = new SessionState(hiveConf, user)
+      SessionState.start(newState)
+      AuthzUtils.setFieldVal(clientImpl, "state", newState)
     }
-    info(s"Final SessionState....${sessionState}")
-    if (sessionState.getUserName == null || sessionState.getUserName != currentUser) {
-      AuthzUtils.setFieldVal(sessionState, "userName", UserGroupInformation.getCurrentUser.getShortUserName)
-    }
-    info(s"Get SessionState User...${sessionState.getUserName}")
-    val authorizer = sessionState.getAuthorizerV2
-    metaHive.withHiveState {
-      if (authorizer != null) {
+
+    val authz = clientImpl.state.getAuthorizerV2
+    clientImpl.withHiveState {
+      if (authz != null) {
         try {
-          authorizer.checkPrivileges(hiveOpType, inputObjs, outputObjs, context)
+          authz.checkPrivileges(hiveOpType, inputObjs, outputObjs, context)
         } catch {
           case hae: HiveAccessControlException =>
             error(
