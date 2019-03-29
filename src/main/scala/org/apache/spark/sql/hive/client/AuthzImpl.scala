@@ -53,12 +53,19 @@ object AuthzImpl extends Logging {
       .externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog]
       .client
     var sessionState: SessionState = null
+    info(s"Get MetaDataHive${metaHive}")
+    info(s"Get metaHive.state ${metaHive.getState}")
+
     metaHive.withHiveState {
       sessionState = SessionState.get()
     }
-    if (sessionState.getUserName == null)
+    info(s"Get SessionState....${sessionState}")
+    if (sessionState.getUserName == null) {
+      info(s"Set User ${UserGroupInformation.getCurrentUser.getShortUserName}")
       AuthzUtils.setFieldVal(sessionState, "userName", UserGroupInformation.getCurrentUser.getShortUserName)
+    }
 
+    info(s"Get SessionState User...${sessionState.getUserName}")
     val authorizer = sessionState.getAuthorizerV2
     metaHive.withHiveState {
       if (authorizer != null) {
