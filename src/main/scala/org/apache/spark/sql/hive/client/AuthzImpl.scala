@@ -17,13 +17,13 @@
 
 package org.apache.spark.sql.hive.client
 
+import java.util.concurrent.ConcurrentHashMap
 import java.util.{List => JList}
 
 import com.githup.yaooqinn.spark.authorizer.Logging
 import org.apache.hadoop.hive.ql.security.authorization.plugin._
 import org.apache.hadoop.hive.ql.session.SessionState
 import org.apache.hadoop.security.UserGroupInformation
-
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.hive.{AuthzUtils, HiveExternalCatalog}
 import org.apache.spark.sql.internal.NonClosableMutableURLClassLoader
@@ -44,6 +44,9 @@ import org.apache.spark.sql.internal.NonClosableMutableURLClassLoader
   *
   */
 object AuthzImpl extends Logging {
+
+  private val userToSession: ConcurrentHashMap[String, SessionState] = new ConcurrentHashMap[String, SessionState]()
+
   def checkPrivileges(sparkSession: SparkSession,
                       hiveOpType: HiveOperationType,
                       inputObjs: JList[HivePrivilegeObject],
@@ -55,11 +58,17 @@ object AuthzImpl extends Logging {
     var sessionState: SessionState = null
     info(s"Get MetaDataHive${metaHive}")
     info(s"Get metaHive.state ${metaHive.getState}")
-
-    metaHive.withHiveState {
-      info(s"Thread => ${Thread.currentThread().getId}")
-      sessionState = SessionState.get()
+    val user = UserGroupInformation.getCurrentUser.getShortUserName
+    if (userToSession.containsKey(user))
+      sessionState = userToSession.get(user)
+    else {
+      metaHive.withHiveState {
+        info(s"Thread => ${Thread.currentThread().getId}")
+        sessionState = SessionState.get()
+      }
+      userToSession.put(user, sessionState)
     }
+
     info(s"Get SessionState....${sessionState}")
     if (sessionState.getUserName == null) {
       info(s"Set User ${UserGroupInformation.getCurrentUser.getShortUserName}")
@@ -93,3 +102,4 @@ object AuthzImpl extends Logging {
     }
   }
 }
+
