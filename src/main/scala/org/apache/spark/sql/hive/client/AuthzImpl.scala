@@ -57,32 +57,19 @@ object AuthzImpl extends Logging {
       .externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog]
       .client
     var sessionState: SessionState = null
-    info(s"Get MetaDataHive${metaHive}")
+    info(s"Get MetaDataHive ${metaHive}")
     info(s"Get metaHive.state ${metaHive.getState}")
-
+    info(s"Get Current User.state ${metaHive.getState}")
     metaHive.withHiveState {
-      info(s"Thread => ${Thread.currentThread().getId}")
-      val user = UserGroupInformation.getCurrentUser.getShortUserName
-      info(s"Current User ${user}")
-      info(s"is empyrt? ${userToSession.isEmpty}")
-      if (!userToSession.isEmpty)
-        userToSession.asScala.foreach(kv => {
-          info(s"user => ${kv._1} , sessionstate => ${kv._2}")
-        })
-      if (!userToSession.containsKey(user)) {
-        sessionState = SessionState.get()
-      }
-      sessionState = userToSession.get(user)
+      info(s"Current Thread ${Thread.currentThread().getId}")
+      sessionState = SessionState.get()
     }
 
     info(s"Get SessionState....${sessionState}")
     if (sessionState.getUserName == null) {
-      val currentUser = UserGroupInformation.getCurrentUser.getShortUserName
-      info(s"Set User ${currentUser}")
-      AuthzUtils.setFieldVal(sessionState, "userName", currentUser)
-      userToSession.put(currentUser, sessionState)
+      info(s"Set User ${UserGroupInformation.getCurrentUser.getShortUserName}")
+      AuthzUtils.setFieldVal(sessionState, "userName", UserGroupInformation.getCurrentUser.getShortUserName)
     }
-
     info(s"Get SessionState User...${sessionState.getUserName}")
     val authorizer = sessionState.getAuthorizerV2
     metaHive.withHiveState {
