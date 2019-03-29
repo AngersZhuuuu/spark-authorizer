@@ -71,15 +71,16 @@ object AuthzImpl extends Logging {
         })
       if (!userToSession.containsKey(user)) {
         sessionState = SessionState.get()
-        userToSession.put(user, sessionState)
       }
       sessionState = userToSession.get(user)
     }
 
     info(s"Get SessionState....${sessionState}")
     if (sessionState.getUserName == null) {
-      info(s"Set User ${UserGroupInformation.getCurrentUser.getShortUserName}")
-      AuthzUtils.setFieldVal(sessionState, "userName", UserGroupInformation.getCurrentUser.getShortUserName)
+      val currentUser = UserGroupInformation.getCurrentUser.getShortUserName
+      info(s"Set User ${currentUser}")
+      AuthzUtils.setFieldVal(sessionState, "userName", currentUser)
+      userToSession.put(currentUser, sessionState)
     }
 
     info(s"Get SessionState User...${sessionState.getUserName}")
