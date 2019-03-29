@@ -59,15 +59,23 @@ object AuthzImpl extends Logging {
     var sessionState: SessionState = null
     info(s"Get MetaDataHive ${metaHive}")
     info(s"Get metaHive.state ${metaHive.getState}")
-    info(s"Get Current User.state ${metaHive.getState}")
+    info(s"Get Current User.state ${UserGroupInformation.getCurrentUser.getShortUserName}")
     metaHive.withHiveState {
       info(s"Current Thread ${Thread.currentThread().getId}")
       sessionState = SessionState.get()
     }
 
     info(s"Get SessionState....${sessionState}")
-    if (sessionState.getUserName == null) {
-      info(s"Set User ${UserGroupInformation.getCurrentUser.getShortUserName}")
+    val currentUser = UserGroupInformation.getCurrentUser.getShortUserName
+    info(s"Set User ${currentUser}")
+    if (!userToSession.contains(currentUser) && sessionState != null) {
+      userToSession.put(currentUser, sessionState)
+      sessionState = userToSession.get(currentUser)
+    } else {
+      sessionState = userToSession.get(currentUser)
+    }
+    info(s"Final SessionState....${sessionState}")
+    if (sessionState.getUserName == null || sessionState.getUserName != currentUser) {
       AuthzUtils.setFieldVal(sessionState, "userName", UserGroupInformation.getCurrentUser.getShortUserName)
     }
     info(s"Get SessionState User...${sessionState.getUserName}")
