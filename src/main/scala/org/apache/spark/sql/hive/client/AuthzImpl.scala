@@ -46,13 +46,12 @@ import scala.collection.JavaConverters._
   */
 object AuthzImpl extends Logging {
 
-  private val userToSession: ConcurrentHashMap[String, SessionState] = new ConcurrentHashMap[String, SessionState]()
 
   def checkPrivileges(sparkSession: SparkSession,
                       hiveOpType: HiveOperationType,
                       inputObjs: JList[HivePrivilegeObject],
                       outputObjs: JList[HivePrivilegeObject],
-                      context: HiveAuthzContext): Unit = {
+                      context: HiveAuthzContext): Unit = synchronized(SESSION_STATE_LOCK) {
     val client = sparkSession.sharedState
       .externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog]
       .client
@@ -109,5 +108,7 @@ object AuthzImpl extends Logging {
       }
     }
   }
+
+  private[this] val SESSION_STATE_LOCK = new Object()
 }
 
