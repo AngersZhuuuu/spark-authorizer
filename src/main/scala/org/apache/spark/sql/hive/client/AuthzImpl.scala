@@ -17,17 +17,14 @@
 
 package org.apache.spark.sql.hive.client
 
-import java.util.concurrent.ConcurrentHashMap
 import java.util.{List => JList}
 
 import com.githup.yaooqinn.spark.authorizer.Logging
 import org.apache.hadoop.hive.ql.security.authorization.plugin._
 import org.apache.hadoop.hive.ql.session.SessionState
-import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.hive.{AuthzUtils, HiveExternalCatalog}
 import org.apache.spark.sql.internal.NonClosableMutableURLClassLoader
-import scala.collection.JavaConverters._
 
 /**
   * A Tool for Authorizer implementation.
@@ -75,10 +72,9 @@ object AuthzImpl extends Logging {
 
     val state = clientImpl.state
     SessionState.setCurrentSessionState(state)
-    val user = UserGroupInformation.getCurrentUser.getShortUserName
-    if (state.getAuthenticator.getUserName != user) {
+    if (state.getAuthenticator.getUserName != sparkSession.sessionUser) {
       val hiveConf = state.getConf
-      val newState = new SessionState(hiveConf, user)
+      val newState = new SessionState(hiveConf, sparkSession.sessionUser)
       SessionState.start(newState)
       AuthzUtils.setFieldVal(clientImpl, "state", newState)
     }
