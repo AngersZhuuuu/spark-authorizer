@@ -48,7 +48,7 @@ object AuthzImpl extends Logging {
                       hiveOpType: HiveOperationType,
                       inputObjs: JList[HivePrivilegeObject],
                       outputObjs: JList[HivePrivilegeObject],
-                      context: HiveAuthzContext): Unit = synchronized(SESSION_STATE_LOCK) {
+                      context: HiveAuthzContext): Unit = SESSION_STATE_LOCK.synchronized {
     val client = sparkSession.sharedState
       .externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog]
       .client
