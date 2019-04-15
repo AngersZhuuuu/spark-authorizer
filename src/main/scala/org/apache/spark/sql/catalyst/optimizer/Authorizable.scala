@@ -38,19 +38,20 @@ trait Authorizable extends Rule[LogicalPlan] with Logging {
   def spark: SparkSession
 
   /**
-   * Visit the [[LogicalPlan]] recursively to get all hive privilege objects, check the privileges
-   * using Hive Authorizer V2 which provide sql based authorization and can implements
-   * ranger-hive-plugins.
-   * If the user is authorized, then the original plan will be returned; otherwise, interrupted by
-   * some particular privilege exceptions.
-   * @param plan a spark LogicalPlan for verifying privileges
-   * @return a plan itself which has gone through the privilege check.
-   */
+    * Visit the [[LogicalPlan]] recursively to get all hive privilege objects, check the privileges
+    * using Hive Authorizer V2 which provide sql based authorization and can implements
+    * ranger-hive-plugins.
+    * If the user is authorized, then the original plan will be returned; otherwise, interrupted by
+    * some particular privilege exceptions.
+    *
+    * @param plan a spark LogicalPlan for verifying privileges
+    * @return a plan itself which has gone through the privilege check.
+    */
   override def apply(plan: LogicalPlan): LogicalPlan = {
     val operationType: HiveOperationType = getOperationType(plan)
     val authzContext = new HiveAuthzContext.Builder().build()
     val (in, out) = PrivilegesBuilder.build(plan)
-    spark.sharedState.externalCatalog match {
+    spark.sharedState.externalCatalog.unwrapped.asInstanceOf[HiveExternalCatalog] match {
       case _: HiveExternalCatalog =>
         AuthzImpl.checkPrivileges(spark, operationType, in, out, authzContext)
       case _ =>
@@ -93,10 +94,11 @@ trait Authorizable extends Rule[LogicalPlan] with Logging {
   }
 
   /**
-   * Mapping of [[LogicalPlan]] -> [[HiveOperation]]
-   * @param plan a spark LogicalPlan
-   * @return
-   */
+    * Mapping of [[LogicalPlan]] -> [[HiveOperation]]
+    *
+    * @param plan a spark LogicalPlan
+    * @return
+    */
   def getHiveOperation(plan: LogicalPlan): HiveOperation = {
     plan match {
       case c: Command => c match {
